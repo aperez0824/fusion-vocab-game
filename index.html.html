@@ -1,0 +1,484 @@
+<div id="app"></div>
+<script type="module">
+// --- Build DOM (no inline <style> tags executed as JS) ---
+const app=document.getElementById('app');
+app.innerHTML=`
+  <div class="center">
+    <h1>Vocab Bounce • 90-Second Challenge</h1>
+    <p>10 terms bounce around. <strong>Find the term that matches the definition</strong>. Each correct click removes that term. You have <strong>90 seconds</strong>.</p>
+  </div>
+  <p class="center" id="status"></p>
+  <canvas id="game" width="1056" height="572"></canvas>
+  <p class="center"><button id="restartBtn">Restart</button></p>
+`;
+const style=document.createElement('style');
+style.textContent=`
+  :root{--warm1:rgba(255,200,120,.95);--warm2:rgba(255,170,90,1)}
+  body{margin:0;background:#0b1220;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  canvas{display:block;margin:0 auto;background:#111}
+  .center{text-align:center}
+  #restartBtn{display:none;padding:8px 14px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;cursor:pointer}
+  #restartBtn:hover{border-color:#64748b}
+  #status{font-size:24px;margin:12px auto 4px;font-weight:800;min-height:30px;width:82%;text-align:center;position:relative;overflow:hidden;background:linear-gradient(90deg,var(--warm1) 0%,var(--warm2) 50%,var(--warm1) 100%);background-size:200% 100%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:shine 6s linear infinite}
+  @keyframes shine{0%{background-position:-200% 0}100%{background-position:200% 0}}
+`;
+document.head.appendChild(style);
+
+// ================= FULL GAME CODE =================
+(function(){
+  function init(){
+    // ---- WORD BANK (1–86 exact GMetrix wording) ----
+    const WORD_BANK=[
+      {def:"The component that is currently active.",correct:"Active Component"},
+      {def:"A tool used to change the position of an object by selecting the desired position on another object.",correct:"Align"},
+      {def:"Pieces of text that provide information on parts within an assembly.",correct:"Annotations"},
+      {def:"A tool that uses the current position between components and defines a motion between those components.",correct:"As-Built Joint"},
+      {def:"A collection of components that have defined relationships with each other and act as a single design.",correct:"Assembly"},
+      {def:"The default view for a drawing.",correct:"Base View"},
+      {def:"A 3D shape created from a 2D sketch using modeling features.",correct:"Body"},
+      {def:"A method in which individual components are created in their own design files and inserted into another design file to be assembled together.",correct:"Bottom-Up Assembly"},
+      {def:"A tool used to create, join, or remove volumes in a design.",correct:"Boundary Fill"},
+      {def:"A view that shortens long parts with a lot of uniform geometry to conserve space on the drawing.",correct:"Break View"},
+      {def:"A tool used to place images on selected planar faces or planes.",correct:"Canvas"},
+      {def:"An annotation that indicates the location of the geometric center of a circle or arc.",correct:"Center Mark"},
+      {def:"A command which displays a marker at the center of mass within a selected object.",correct:"Center of Mass"},
+      {def:"An annotation line that indicates an axis of symmetry.",correct:"Centerline"},
+      {def:"A tool used to indicate faces on objects that touch but do not interfere with each other.",correct:"Coincident Faces"},
+      {def:"A tool used to create a new body from multiple selected bodies.",correct:"Combine"},
+      {def:"A part of an assembly with a unique origin and which can have motion or a container that houses bodies, sketches, and construction geometry.",correct:"Component"},
+      {def:"A limitation on sketch elements used to create relationships between sketch elements.",correct:"Constraint"},
+      {def:"Axes used for constructing references for creating sketches or features for complex 3D models.",correct:"Construction Axes"},
+      {def:"Work planes that allow the construction of 2D sketches on complex 3D models.",correct:"Construction Planes"},
+      {def:"A flat-bottomed enlargement for a hole allowing the top of a fastener to be flush with the material's surface.",correct:"Counterbore"},
+      {def:"A conical enlargement for a hole allowing a tapered fastener to be flush with the material's surface.",correct:"Countersink"},
+      {def:"A line on a section view that passes through the object and shows where the object will be cut.",correct:"Cutting Plane Line"},
+      {def:"A flat angle along the edge of a part or between the edge and specified face of a part.",correct:"Chamfer"},
+      {def:"A panel in which users can store and view their projects and Fusion Team files. This panel also includes samples from various Fusion 360 workspaces.",correct:"Data Panel"},
+      {def:"A tool used to place images on selected models of a 3D body.",correct:"Decal"},
+      {def:"The amount of directional and rotational movement allowed for a part or component.",correct:"Degrees of Freedom"},
+      {def:"A workspace that allows for using 2D sketch geometry to create solid, surface, or T-Spline models.",correct:"Design Workspace"},
+      {def:"A view that creates an enlarged view of all or a portion of another view.",correct:"Detail View"},
+      {def:"Defined measurements for pieces within a design or drawing.",correct:"Dimensions"},
+      {def:"A dark line drawn around the sheet's edge to indicate the drawing sheet's outer edge.",correct:"Drawing Border"},
+      {def:"A line of text that communicates additional details about how a design will be manufactured.",correct:"Drawing Notes"},
+      {def:"A workspace allowing for creating 2D drawings derived from models created in the Design workspace.",correct:"Drawing Workspace"},
+      {def:"A tool that defines specific values for the degrees of freedom allowed by a joint in a 3D model.",correct:"Drive Joint"},
+      {def:"A technical drawing used to communicate information about an object so that the object may be manufactured.",correct:"Engineering Drawing"},
+      {def:"A diagram, pictorial, or schematic that shows the relationship of components in an assembly.",correct:"Exploded View"},
+      {def:"A command that adds length to lines from a sketch.",correct:"Extend"},
+      {def:"A feature that allows a 2D sketch to have one or more of its parts turned into a 3D model or body.",correct:"Extrusion"},
+      {def:"The general term for categorizing all 3D modeling commands such as extrude, revolve, sweep, loft, and so on.",correct:"Feature"},
+      {def:"A round edge on a part or face within a design.",correct:"Fillet"},
+      {def:"A contextual environment that allows the creation of T-Spline bodies.",correct:"Form"},
+      {def:"A tool that allows a drawing to be rotated based on a rotation point.",correct:"Free Orbit"},
+      {def:"A state of a part or component that removes all degrees of freedom in an assembly.",correct:"Grounded"},
+      {def:"A punch-out of a 3D model, often used to represent where a fastener will go within a part or component.",correct:"Hole"},
+      {def:"A tool that detects if components collide or interfere with one another.",correct:"Interference"},
+      {def:"A view that shows an object appearing as a 3D object, typically shown in the top, front, and right-side orientation.",correct:"Isometric View"},
+      {def:"A tool that defines a positional relationship between components and defines a motion between those components.",correct:"Joint"},
+      {def:"An indicator used to indicate an object's geometry and position.",correct:"Joint Origin"},
+      {def:"A tool that creates a transitional shape between two or more sketch profiles or planar faces.",correct:"Loft"},
+      {def:"A tool used in various commands to drag an icon, such as an arrow, to see the changes in a design.",correct:"Manipulator"},
+      {def:"A tool used for reporting the distance, angle, area, or position of a selected object.",correct:"Measure"},
+      {def:"A tool used to create copies of faces, bodies, features, or components using a selected plane.",correct:"Mirror"},
+      {def:"A tool used to perform motion analysis on a design to help visualize a design's function.",correct:"Motion Studies"},
+      {def:"A drawing that shows at least two or more 2D views of a 3D dimensional object derived from the object's orthographic projections.",correct:"Multiview Drawing"},
+      {def:"A 2D view of a 3D object.",correct:"Orthographic View/Orthographic Projection"},
+      {def:"A measurable design factor that can control the size and location of features based on dimensional values created in the model.",correct:"Parameter"},
+      {def:"A view selected to create another view, such as a projected view, detail view, or section view.",correct:"Parent View"},
+      {def:"A tool that repeats a feature in a rectangular or circular fashion with a sketch, body, face, or component.",correct:"Pattern"},
+      {def:"A view that allows one to see a realistic representation of a final product.",correct:"Perspective View"},
+      {def:"A tool that modifies selected geometry using offset, fillet, or extrude commands.",correct:"Press Pull"},
+      {def:"A starting point for a sketch that can be represented on the XY, XZ, or YZ axes of a drawing.",correct:"Principal Work Plane(s)"},
+      {def:"A feature that adds to a sketch using outlines from an existing sketch.",correct:"Project"},
+      {def:"The area of the screen, usually on the left, which contains all sketches, features, bodies, components, and construction geometry within a design.",correct:"Project Browser"},
+      {def:"A view generated from the base view or other selected view.",correct:"Projected View"},
+      {def:"A menu containing information about a design, such as a name, material, volume, mass, and surface area found in the Browser.",correct:"Properties"},
+      {def:"A 3D feature used to take a flat object and multiply it multiple times around an axis.",correct:"Revolve"},
+      {def:"A tool that locks the current position of selected components and has them act as a single object.",correct:"Rigid Group"},
+      {def:"A ratio comparing an actual object's size to the size represented on the engineering drawing.",correct:"Scale"},
+      {def:"A tool that generates a cut-away view of an object using a plane or face.",correct:"Section Analysis"},
+      {def:"A view that shows the internal detail of a model.",correct:"Section View"},
+      {def:"A tool that removes material from a part's interior, creating a hollow cavity with walls within the part.",correct:"Shell"},
+      {def:"A profile containing 2D geometry used to create a body.",correct:"Sketch"},
+      {def:"Points identified on an object's edge or face that allow for easy selection of joints, alignment, or measurement.",correct:"Snap Points"},
+      {def:"A tool that creates new bodies defined by a selected face, profile, or plane.",correct:"Split Body"},
+      {def:"A component that contains other components nested within.",correct:"Subassembly"},
+      {def:"The act that allows for features to be hidden as well as any dependent features or sketches.",correct:"Suppress"},
+      {def:"A tool that takes a selected 2D profile and sweeps it along a selected path.",correct:"Sweep"},
+      {def:"A representation of ridges either on a bolt or screw or, in the case of a hole, a representation of ridges in a hole.",correct:"Thread"},
+      {def:"A tool that allows designers to review the history of a design.",correct:"Timeline"},
+      {def:"A block of text, somewhat automated, added to a drawing to provide information on a file.",correct:"Title Block"},
+      {def:"A method where all components are created in the same design.",correct:"Top-Down Assembly"},
+      {def:"A component that contains the elements of a design—also known as the Default Component.",correct:"Top-Level Component"},
+      {def:"A command that removes excess lines from a sketch.",correct:"Trim"},
+      {def:"A method for creating organic bodies by pushing or pulling a design's faces, edges, or vertices.",correct:"T-Spline Modeling"},
+      {def:"The default file in Fusion 360 when starting a new design.",correct:"Untitled Design File"},
+      {def:"A tool that allows one to navigate through preset views in a design or drawing.",correct:"ViewCube"}
+    ];
+
+    // ---- Config ----
+    const NUM_TERMS=10, ROUND_TIME=90, COUNTDOWN_FROM=5, DT_NORM=16;
+    const BASE_SPEED=1.08, SPEED_VAR=0.9;
+    const HIT_PAD=8, HOVER_PAD=6;
+    const SPAM_WINDOW_MS=2000, SPAM_MAX_CLICKS=10, SPAM_MAX_WRONG=5, SPAM_LOCK_MS=1000, SPAM_PENALTY_SEC=2;
+    const BOUNCE_E_WALL=1.0, BOUNCE_E_PAIR=1.0, MIN_SPEED=0.81, MAX_SPEED=2.34, NUDGE=0.12, COLLISION_ITERS=2;
+    const FW_GRAV=0.04, FW_DRAG=0.99, FW_SPAWN_INTERVAL=250, FW_PARTICLES=70, FW_SPEED_MIN=2.5, FW_SPEED_MAX=5.0;
+    const MAX_LIVES=3;
+    // HUD layout for hearts
+    const HEART_SIZE=22, HEART_GAP=HEART_SIZE+8, HEART_X0=20, HEART_Y0=24;
+
+    // ---- State ----
+    const canvas=document.getElementById('game');
+    const ctx=canvas.getContext('2d');
+    const statusEl=document.getElementById('status');
+    const restartBtn=document.getElementById('restartBtn');
+
+    let running=true, actors=[], score=0, timeLeft=ROUND_TIME, lastTime=0;
+    let wrongFlashUntil=0, shakeUntil=0, shakeMag=0;
+    let clickTimes=[], wrongTimes=[], antiSpamUntil=0, spamMsgUntil=0;
+    let hoveredIndex=-1, hoverX=null, hoverY=null;
+    let phase='countdown', countdownUntil=0;
+    let fireworks=[], celebrationUntil=0, nextFireAt=0;
+    let deck=[], deckIndex=0, currentTarget=null;
+    let tronBursts=[];
+    let heartBursts=[]; // particles for heart "death" animation
+    let lives=MAX_LIVES;
+    let gameOverReason='Time!';
+
+    // ---- Deck helpers ----
+    function buildDeck(){
+      // Filter out any malformed entries to avoid undefined .correct errors
+      const clean = WORD_BANK.filter(it=>it && typeof it.correct==='string' && typeof it.def==='string');
+      deck = shuffle(clean.slice());
+      deckIndex = 0;
+      if(deck.length===0){ console.error('WORD_BANK is empty or malformed.'); }
+    }
+    function nextDeckItem(){
+      // Always return a valid entry; skip malformed
+      while(true){
+        if(deckIndex>=deck.length) buildDeck();
+        const cand = deck[deckIndex++];
+        if(cand && typeof cand.correct==='string') return cand;
+      }
+    }
+
+    // ---- Flow ----
+    function beginCountdown(){
+      restartBtn.style.display='none';
+      statusEl.textContent='Get ready…';
+      actors=[];score=0;timeLeft=ROUND_TIME;wrongFlashUntil=0;tronBursts.length=0;lives=MAX_LIVES;gameOverReason='Time!';
+      phase='countdown';countdownUntil=performance.now()+COUNTDOWN_FROM*1000;
+      running=true;lastTime=performance.now();
+      requestAnimationFrame(loop);
+    }
+    function startGame(){
+      running=true;score=0;timeLeft=ROUND_TIME;actors=[];wrongFlashUntil=0;tronBursts.length=0;lives=MAX_LIVES;gameOverReason='Time!';
+      buildDeck();seedActors();pickNewTargetFromActors();devCheckNoDuplicates();
+      lastTime=performance.now();requestAnimationFrame(loop);
+    }
+
+    restartBtn.addEventListener('click',beginCountdown);
+    document.addEventListener('keydown',e=>{if((e.key==='r'||e.key==='R')&&(phase==='gameover'))beginCountdown()});
+
+    // ---- Actors ----
+    function seedActors(){
+      const used=new Set();
+      ctx.font='20px sans-serif';
+      let guard=0, maxGuard=Math.max(WORD_BANK.length*2, 40);
+      while(actors.length<NUM_TERMS && guard<maxGuard){
+        const item=nextDeckItem();
+        const text=item && item.correct ? item.correct : undefined;
+        if(!text){ guard++; continue; }
+        if(used.has(text)) { guard++; continue; }
+        used.add(text);
+        actors.push(makeActor(text));
+        guard++;
+      }
+      if(actors.length<NUM_TERMS){
+        console.warn('Not enough valid terms to seed actors. Seeded:', actors.length);
+      }
+    }
+    function makeActor(text){
+      const padding=20;
+      const w=Math.max(60,ctx.measureText(text).width+padding), h=34;
+      let x=w/2+Math.random()*(canvas.width-w), y=h/2+Math.random()*(canvas.height-h);
+      const ang=Math.random()*Math.PI*2, speed=BASE_SPEED+Math.random()*SPEED_VAR;
+      let vx=Math.cos(ang)*speed, vy=Math.sin(ang)*speed;
+      return {x,y,w,h,vx,vy,text,hit:false,active:true};
+    }
+    function pickNewTargetFromActors(){
+      if(!actors.length){ statusEl.textContent='No actors available'; return; }
+      const pick=actors[Math.floor(Math.random()*actors.length)];
+      const item=WORD_BANK.find(it=>it && it.correct===pick.text) || {def:'(definition not found)',correct:pick.text};
+      currentTarget={text:pick.text,def:item.def};
+      statusEl.textContent='Find: '+item.def;
+    }
+
+    // ---- Loop ----
+    function loop(ts){const dt=ts-lastTime;lastTime=ts;update(dt/DT_NORM,dt);render(ts);requestAnimationFrame(loop)}
+
+    function update(dtNorm,dtMs){
+      if(phase==='gameover'){return;}
+      if(phase==='countdown'){ if(performance.now()>=countdownUntil){startGame();phase='running'} return;}
+      if(phase==='celebrate'){ updateFireworks(dtNorm,dtMs); if(performance.now()>=celebrationUntil&&fireworks.length===0){statusEl.textContent='All terms cleared!';gameOver('Completed!')} return;}
+
+      timeLeft-=dtMs/1000; if(timeLeft<=0){timeLeft=0;gameOver('Time!');return}
+
+      // movement and walls
+      for(const a of actors){
+        a.x+=a.vx*dtNorm; a.y+=a.vy*dtNorm;
+        if(a.x-a.w/2<0){a.x=a.w/2;a.vx=Math.abs(a.vx)*BOUNCE_E_WALL}
+        if(a.x+a.w/2>canvas.width){a.x=canvas.width-a.w/2;a.vx=-Math.abs(a.vx)*BOUNCE_E_WALL}
+        if(a.y-a.h/2<0){a.y=a.h/2;a.vy=Math.abs(a.vy)*BOUNCE_E_WALL}
+        if(a.y+a.h/2>canvas.height){a.y=canvas.height-a.h/2;a.vy=-Math.abs(a.vy)*BOUNCE_E_WALL}
+        clampSpeed(a);
+      }
+      for(let i=0;i<COLLISION_ITERS;i++)resolveCollisions(actors);
+      for(const a of actors)clampSpeed(a);
+
+      // dissipating burst particles
+      for(const b of tronBursts){
+        b.t+=dtMs;
+        for(const s of b.shards){s.x+=s.vx*dtNorm;s.y+=s.vy*dtNorm;s.vx*=.992;s.vy*=.992;s.alpha-=.004*dtMs}
+        if(b.dust){for(const d of b.dust){d.x+=d.vx*dtNorm;d.y+=d.vy*dtNorm;d.vx*=.995;d.vy*=.995;d.alpha-=.0032*dtMs} b.dust=b.dust.filter(d=>d.alpha>0)}
+      }
+      tronBursts=tronBursts.filter(b=>b.t<b.dur||(b.dust&&b.dust.length>0));
+
+      // update heart burst particles
+      updateHeartBursts(dtNorm, dtMs);
+
+      // hover detection
+      if(hoverX!==null&&phase==='running'){
+        hoveredIndex=-1; for(let i=0;i<actors.length;i++){const m=actors[i]; if(hoverX>=m.x-m.w/2-HOVER_PAD&&hoverX<=m.x+m.w/2+HOVER_PAD&&hoverY>=m.y-m.h/2-HOVER_PAD&&hoverY<=m.y+m.h/2+HOVER_PAD){hoveredIndex=i;break}}
+        canvas.style.cursor=(hoveredIndex!==-1)?'pointer':'default';
+      }
+    }
+
+    function render(ts){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      if(ts<shakeUntil){const dx=(Math.random()-.5)*shakeMag,dy=(Math.random()-.5)*shakeMag;ctx.save();ctx.translate(dx,dy)}
+
+      if(phase==='countdown'){
+        const remaining=Math.max(0,countdownUntil-ts), n=Math.max(1,Math.ceil(remaining/1000));
+        ctx.fillStyle='rgba(0,0,0,.45)';ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font='bold 140px sans-serif';ctx.fillText(String(n),canvas.width/2,canvas.height/2+40);
+        if(ts<shakeUntil)ctx.restore();return;
+      }
+
+      if(phase==='celebrate'){
+        ctx.fillStyle='rgba(0,0,0,.25)';ctx.fillRect(0,0,canvas.width,canvas.height);renderFireworks(ctx);
+        ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font='bold 48px sans-serif';ctx.fillText('All terms cleared!',canvas.width/2,canvas.height/2-10);
+        ctx.font='24px sans-serif';ctx.fillText('Final Score: '+score,canvas.width/2,canvas.height/2+30);
+        if(ts<shakeUntil)ctx.restore();return;
+      }
+
+      if(ts<wrongFlashUntil){ctx.fillStyle='rgba(239,68,68,.35)';ctx.fillRect(0,0,canvas.width,canvas.height)}
+      if(ts<antiSpamUntil||ts<spamMsgUntil){ctx.fillStyle='rgba(245,158,11,.28)';ctx.fillRect(0,0,canvas.width,canvas.height); if(ts<spamMsgUntil){ctx.fillStyle='#FFD166';ctx.textAlign='center';ctx.font='bold 48px sans-serif';ctx.fillText('Slow down! -2s',canvas.width/2,canvas.height/2)}}
+
+      // HUD (lives + score + time)
+      drawLives(HEART_X0, HEART_Y0, HEART_SIZE);
+      // render heart burst FX over HUD
+      renderHeartBursts(ctx);
+      ctx.fillStyle='#fff';ctx.font='bold 48px sans-serif';ctx.textAlign='left';ctx.fillText('Score: '+score,140,50);ctx.textAlign='right';ctx.fillText('Time: '+timeLeft.toFixed(1)+'s',canvas.width-20,50);
+
+      const hoveredRef=(hoveredIndex!==-1?actors[hoveredIndex]:null);
+      for(const m of actors){
+        ctx.save();drawRoundedRect(ctx,m.x-m.w/2,m.y-m.h/2,m.w,m.h,12);
+        if(m===hoveredRef&&phase==='running'){ctx.fillStyle='rgba(255,200,120,.35)';ctx.lineWidth=2.5;ctx.fill();ctx.strokeStyle='rgba(255,190,120,.9)';ctx.stroke()}
+        else{ctx.fillStyle='rgba(100,150,255,.25)';ctx.fill();ctx.strokeStyle='#7dd3fc';ctx.lineWidth=1.5;ctx.stroke()}
+        ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font='20px sans-serif';ctx.fillText(m.text,m.x,m.y+7);ctx.restore();
+      }
+
+      renderTron();
+      if(ts<shakeUntil)ctx.restore();
+
+      if(phase==='gameover'){
+        // darken harder and show big GAME OVER text; Restart button is already visible
+        ctx.fillStyle='rgba(0,0,0,0.75)';
+        ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.textAlign='center';
+        ctx.font='bold 88px sans-serif';
+        ctx.fillStyle='#ef4444';
+        ctx.fillText(gameOverReason || 'GAME OVER!', canvas.width/2, canvas.height/2 - 10);
+        ctx.font='24px sans-serif';
+        ctx.fillStyle='#ffffff';
+        ctx.fillText('Press R or click Restart to play again', canvas.width/2, canvas.height/2 + 34);
+      }
+    }
+
+    function gameOver(reason){phase='gameover';restartBtn.style.display='inline-block';if(reason)gameOverReason=reason}
+
+    // ---- Visual FX (dissolve ~20% larger; rings unchanged) ----
+    function spawnTron(x,y,w,h){
+      const dur=800,n=26,angleBase=Math.random()*Math.PI*2,shards=[];
+      for(let i=0;i<n;i++){
+        const ang=angleBase+(i/n)*Math.PI*2+(Math.random()*.3-.15);
+        const spd=2.2+Math.random()*3.2;
+        shards.push({x,y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,alpha:1,r:2+Math.random()*3});
+      }
+      const dust=[],step=6; const hScaled=h*1.2, wScaled=w*1.2; // only dissolve enlarged
+      for(let yy=-hScaled/2;yy<=hScaled/2;yy+=step){
+        for(let xx=-wScaled/2;xx<=wScaled/2;xx+=step){
+          if(Math.random()<.18){
+            const jitterX=(Math.random()-.5)*3,jitterY=(Math.random()-.5)*3;
+            const ang=Math.atan2(yy,xx)+(Math.random()*.9-.45);
+            const spd=.6+Math.random()*1.8;
+            dust.push({x:x+xx+jitterX,y:y+yy+jitterY,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,alpha:1,r:2+Math.random()*2});
+          }
+        }
+      }
+      tronBursts.push({x,y,w,h,t:0,dur,shards,dust});
+    }
+    function renderTron(){
+      if(!tronBursts.length)return;ctx.save();const prev=ctx.globalCompositeOperation;ctx.globalCompositeOperation='lighter';
+      for(const b of tronBursts){
+        const p=Math.min(1,b.t/b.dur);
+        const baseR=b.w*0.45, spread=220; // rings constant size behavior
+        for(let k=0;k<3;k++){
+          const pr=p*1.2-k*.25; if(pr<=0||pr>=1)continue; const R=baseR+pr*spread; const a=.75*(1-pr);
+          ctx.strokeStyle=`rgba(255,180,120,${a})`; ctx.lineWidth=4-pr*2.5; ctx.beginPath(); ctx.arc(b.x,b.y,R,0,Math.PI*2); ctx.stroke();
+        }
+        for(const s of b.shards){ if(s.alpha<=0)continue; ctx.fillStyle=`rgba(255,190,120,${Math.max(0,Math.min(1,s.alpha))})`; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill(); }
+        if(b.dust){ for(const d of b.dust){ if(d.alpha<=0)continue; const a=Math.max(0,Math.min(1,d.alpha)); ctx.fillStyle=`rgba(255,180,120,${a})`; ctx.fillRect(d.x,d.y,d.r,d.r); if(Math.random()<.1){ ctx.fillStyle=`rgba(255,255,255,${a*.7})`; ctx.fillRect(d.x+.5,d.y+.5,1,1); } } }
+      }
+      ctx.globalCompositeOperation=prev;ctx.restore();
+    }
+
+    // ---- Physics ----
+    function clampSpeed(a){let s=Math.hypot(a.vx,a.vy);if(s<MIN_SPEED){const ang=Math.atan2(a.vy,a.vx)||(Math.random()*Math.PI*2);a.vx=Math.cos(ang)*MIN_SPEED;a.vy=Math.sin(ang)*MIN_SPEED}else if(s>MAX_SPEED){a.vx=a.vx/s*MAX_SPEED;a.vy=a.vy/s*MAX_SPEED}}
+    function rectsOverlap(a,b){return Math.abs(a.x-b.x)<(a.w+b.w)/2 && Math.abs(a.y-b.y)<(a.h+b.h)/2}
+    function resolveCollisions(list){
+      for(let i=0;i<list.length;i++){
+        const a=list[i];
+        for(let j=i+1;j<list.length;j++){
+          const b=list[j]; if(!rectsOverlap(a,b))continue;
+          const dx=b.x-a.x, dy=b.y-a.y; const overlapX=a.w/2+b.w/2-Math.abs(dx), overlapY=a.h/2+b.h/2-Math.abs(dy);
+          if(overlapX<overlapY){const push=(overlapX+.5)/2; if(dx>0){a.x-=push;b.x+=push}else{a.x+=push;b.x-=push} const avx=a.vx,bvx=b.vx; a.vx=(bvx+Math.sign(-dx)*NUDGE)*BOUNCE_E_PAIR; b.vx=(avx+Math.sign(dx)*NUDGE)*BOUNCE_E_PAIR}
+          else{const push=(overlapY+.5)/2; if(dy>0){a.y-=push;b.y+=push}else{a.y+=push;b.y-=push} const avy=a.vy,bvy=b.vy; a.vy=(bvy+Math.sign(-dy)*NUDGE)*BOUNCE_E_PAIR; b.vy=(avy+Math.sign(dy)*NUDGE)*BOUNCE_E_PAIR}
+          clampSpeed(a);clampSpeed(b);
+        }
+      }
+    }
+    function drawRoundedRect(ctx,x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath()}
+
+    // ---- Fireworks ----
+    function startCelebration(){phase='celebrate';fireworks=[];celebrationUntil=performance.now()+4000;nextFireAt=0;for(let i=0;i<4;i++)spawnBurst(canvas.width*.1+Math.random()*canvas.width*.8,canvas.height*.2+Math.random()*canvas.height*.6,FW_PARTICLES)}
+    function spawnBurst(x,y,count){const hue=Math.floor(Math.random()*360);for(let i=0;i<count;i++){const ang=Math.random()*Math.PI*2;const spd=FW_SPEED_MIN+Math.random()*(FW_SPEED_MAX-FW_SPEED_MIN);fireworks.push({x,y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,alpha:1,life:1200+Math.random()*600,hue:(hue+Math.random()*40-20+360)%360,r:2+Math.random()*2})}}
+    function updateFireworks(dtNorm,dtMs){const now=performance.now();if(now>=nextFireAt&&now<celebrationUntil){spawnBurst(canvas.width*.15+Math.random()*canvas.width*.7,canvas.height*.25+Math.random()*canvas.height*.5,Math.floor(FW_PARTICLES*.8+Math.random()*FW_PARTICLES*.4));nextFireAt=now+FW_SPAWN_INTERVAL}for(const p of fireworks){p.vx*=FW_DRAG;p.vy=p.vy*FW_DRAG+FW_GRAV*dtNorm;p.x+=p.vx*dtNorm;p.y+=p.vy*dtNorm;p.life-=dtMs;p.alpha-=.0018*dtMs}fireworks=fireworks.filter(p=>p.alpha>0&&p.life>0)}
+    function renderFireworks(ctx){for(const p of fireworks){ctx.save();ctx.globalAlpha=Math.max(0,Math.min(1,p.alpha));ctx.fillStyle=`hsl(${p.hue},100%,60%)`;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();ctx.restore()}}
+
+    // ---- Input ----
+    canvas.addEventListener('mousemove',e=>{if(phase!=='running')return;const r=canvas.getBoundingClientRect(),sx=canvas.width/r.width,sy=canvas.height/r.height;hoverX=(e.clientX-r.left)*sx;hoverY=(e.clientY-r.top)*sy});
+    canvas.addEventListener('mouseleave',()=>{hoveredIndex=-1;hoverX=null;hoverY=null;canvas.style.cursor='default'});
+    canvas.addEventListener('click',e=>{
+      if(!running||phase!=='running')return;const now=performance.now(); if(now<antiSpamUntil){spamMsgUntil=Math.max(spamMsgUntil,now+600);return}
+      const r=canvas.getBoundingClientRect(),sx=canvas.width/r.width,sy=canvas.height/r.height;const x=(e.clientX-r.left)*sx,y=(e.clientY-r.top)*sy;
+      let hitIndex=-1, hitCorrect=false; for(let i=0;i<actors.length;i++){const m=actors[i]; if(x>=m.x-m.w/2-HIT_PAD&&x<=m.x+m.w/2+HIT_PAD&&y>=m.y-m.h/2-HIT_PAD&&y<=m.y+m.h/2+HIT_PAD){hitIndex=i;hitCorrect=(m.text===currentTarget.text);break}}
+      if(hitIndex!==-1){
+        const m=actors[hitIndex];
+        if(hitCorrect){
+          score+=1;spawnTron(m.x,m.y,m.w,m.h);actors.splice(hitIndex,1);hoveredIndex=-1;
+          if(actors.length>0){pickNewTargetFromActors()}else{startCelebration()}
+          logClick(true)
+        } else {
+          wrongFlashUntil=now+300;shakeUntil=now+300;shakeMag=12;logClick(false);
+          if(lives>0){
+            // compute heart position for the life being lost and spawn an explosion
+            const hx = HEART_X0 + (lives-1)*HEART_GAP;
+            const hy = HEART_Y0;
+            spawnHeartBurst(hx, hy, HEART_SIZE);
+            lives--;
+          }
+          if(lives<=0){ shakeUntil=now+1200; shakeMag=22; gameOver('GAME OVER!'); }
+        }
+      } else {
+        logClick(false); // miss-click does not cost a life
+      }
+    });
+
+    // ---- Lives (pixel heart icon) ----
+    function drawLives(x,y,size){
+      const gap=size+8;
+      for(let i=0;i<MAX_LIVES;i++){
+        const filled=i<lives; drawPixelHeart(x+i*gap,y,size,filled);
+      }
+    }
+    // Pixel-art heart (retro style) drawn procedurally so we don't need an image asset
+    function drawPixelHeart(x,y,s,filled){
+      const px=Math.max(2, Math.floor(s/6)); // pixel size
+      const color=filled? '#e11d48' : 'rgba(148,163,184,0.6)';
+      const shine=filled? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.25)';
+      // 8x7 heart bitmap (1=body)
+      const map=[
+        [0,1,1,0,0,1,1,0],
+        [1,1,1,1,1,1,1,1],
+        [1,1,1,1,1,1,1,1],
+        [0,1,1,1,1,1,1,0],
+        [0,0,1,1,1,1,0,0],
+        [0,0,0,1,1,0,0,0],
+        [0,0,0,0,1,0,0,0]
+      ];
+      const shineMap=[[1,0],[2,0],[0,1]]; // small highlight
+      ctx.save();
+      ctx.translate(x - (map[0].length*px)/2, y - (map.length*px)/2);
+      ctx.fillStyle=color;
+      for(let r=0;r<map.length;r++){
+        for(let c=0;c<map[r].length;c++){
+          if(map[r][c]) ctx.fillRect(c*px, r*px, px, px);
+        }
+      }
+      ctx.fillStyle=shine; for(const [cx,cy] of shineMap){ ctx.fillRect(cx*px, cy*px, px, px); }
+      ctx.restore();
+    }
+
+    // ---- Heart death FX ----
+    function spawnHeartBurst(x,y,size){
+      const px=Math.max(2, Math.floor(size/6));
+      // make a bunch of pixel shards + a few blood drips
+      for(let i=0;i<28;i++){
+        const ang=Math.random()*Math.PI*2; const spd=1.2+Math.random()*2.6;
+        heartBursts.push({x,y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,alpha:1,r:px,life:700+Math.random()*500,type:'shard'});
+      }
+      for(let i=0;i<10;i++){
+        const ang=(-Math.PI/2)+(Math.random()*Math.PI/2); // mostly downward
+        const spd=0.8+Math.random()*1.6;
+        heartBursts.push({x,y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,alpha:1,r:px+1,life:900+Math.random()*700,type:'blood'});
+      }
+    }
+    function updateHeartBursts(dtNorm,dtMs){
+      const GRAV=0.06; const DRAG=.992;
+      for(const p of heartBursts){
+        if(p.type==='blood'){ p.vy+=GRAV*dtNorm; }
+        p.vx*=DRAG; p.vy*=DRAG; p.x+=p.vx*dtNorm; p.y+=p.vy*dtNorm; p.life-=dtMs; p.alpha-=0.0018*dtMs;
+      }
+      heartBursts=heartBursts.filter(p=>p.life>0 && p.alpha>0);
+    }
+    function renderHeartBursts(ctx){
+      if(!heartBursts.length) return;
+      ctx.save();
+      for(const p of heartBursts){
+        const a=Math.max(0,Math.min(1,p.alpha));
+        ctx.globalAlpha=a;
+        ctx.fillStyle = p.type==='blood' ? '#dc2626' : '#e11d48';
+        ctx.fillRect(p.x-p.r/2,p.y-p.r/2,p.r,p.r);
+      }
+      ctx.restore();
+    }
+
+    // ---- Anti-spam ----
+    function logClick(wasCorrect){const t=performance.now();clickTimes.push(t);const cutoff=t-SPAM_WINDOW_MS;while(clickTimes.length&&clickTimes[0]<cutoff)clickTimes.shift();if(!wasCorrect){wrongTimes.push(t);while(wrongTimes.length&&wrongTimes[0]<cutoff)wrongTimes.shift()}if(clickTimes.length>SPAM_MAX_CLICKS||wrongTimes.length>SPAM_MAX_WRONG){antiSpamUntil=t+SPAM_LOCK_MS;spamMsgUntil=t+1200;timeLeft=Math.max(0,timeLeft-SPAM_PENALTY_SEC)}}
+
+    // ---- Dev helpers ----
+    function devCheckNoDuplicates(){const texts=actors.map(a=>a.text);const set=new Set(texts);console.assert(texts.length===set.size,'Duplicate terms on screen!',texts);console.assert(actors.length===NUM_TERMS,'Unexpected actor count',actors.length)}
+    function shuffle(arr){for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j]]}return arr}
+
+    // ---- Boot ----
+    beginCountdown();
+  }
+
+  if(document.readyState==='loading'){
+    window.addEventListener('DOMContentLoaded', init);
+  }else{ init(); }
+})();
+</script>
